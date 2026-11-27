@@ -1,8 +1,8 @@
 # Sombrero dust, track B: Hubble's statistics imposed on the 3D field (#490)
 
 Code: `references/sombrero/tools/dust_track_b.py`. Finalists: `references/sombrero/dust-tracks/b/`.
-Trials, frames and sheets: `~/claude-workspace/sombrero/banc/490/` (`trials.csv`, `finalists/`,
-`contact.jpg`). Read with `sombrero-dust-sheet.md` (the bench, `texture.py`) and the brief of wave 2.
+Trials, frames and sheets: `$SOMBRERO/banc/490/` (`trials.csv`, `finalists/`,
+`contact.jpg`). Read with `sombrero-dust-sheet.md` (the bench, `texture.py`) and `sombrero-dust-bench.md` (the plan).
 
 ## What was built
 
@@ -93,7 +93,7 @@ summary against Hubble at 6144:
 ## Finalists
 
 Scores at 6144 (`share=depth centre=nucleus blur=0.15`, 24 M grains), the old colour law, one row per
-seed; `law=hubble` is the drawing Pierre sees (column re-derived from the same opacity field through the
+seed; `law=hubble` is the drawing shown on the sheets (column re-derived from the same opacity field through the
 new law, inner cut 5.32 kpc = `inner` 0.6045 x `rim` 8.8, the near band's top edge). Colour is not summed.
 Pass line: summary under 2.3, no bar over 3, phase under 3.
 
@@ -112,7 +112,7 @@ All but f6 pass the line on their folder's seed and on average; f1 and f8 pass o
 the phase bar for every c = 1 recipe and for none of the lifted ones. Far half (bench figures, Hubble 0.45 /
 0.09 / 0.039): offset 0.36 to 0.39, width 0.19 to 0.24, depth 0.036 to 0.039; f6 0.42 / 0.47 / 0.030.
 
-**First for Pierre: f1**, statistics only, best on every seed, and the least streaky from above of the
+**First pick: f1**, statistics only, best on every seed, and the least streaky from above of the
 statistics-only rings. f8 beside it as the ceiling: Hubble's own (gaussianised) pixels quilted score
 about the same, so on this score the statistics have caught up with the exemplar; what separates both
 from Hubble is seen, not scored (below).

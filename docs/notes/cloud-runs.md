@@ -81,7 +81,7 @@ scripts/gpu-box.sh run env LD_LIBRARY_PATH=.build/linux .build/linux/sillage-cud
     --rate 30 --out /work/cuda
 scripts/gpu-box.sh wait && scripts/gpu-box.sh fetch logs cuda
 scripts/gpu-box.sh down "engine check, one 4K frame of each scene (#513)"
-python3 scripts/still-pairs.py mac ~/claude-workspace/gpu-out/<date>-<box>/cuda --out pairs
+python3 scripts/still-pairs.py mac <fetched folder>/cuda --out pairs
 ```
 
 A flight names its dust screen's tile by path (`inside.dustScreen.tile`): on the box it is

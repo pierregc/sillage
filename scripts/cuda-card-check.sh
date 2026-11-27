@@ -14,7 +14,7 @@ OUT="${OUT:-$ROOT/out}"
 mkdir -p "$OUT"
 log="$OUT/cuda-card-check.log"
 started=$SECONDS
-# Timings, the 200 M faint light and exact resume on a GPU (dropped by Pierre) are left out.
+# Timings, the 200 M faint light and exact resume on a GPU are left out on purpose.
 {
     REQUIRE_NVCC=1 scripts/linux.sh engine-check &&
         REQUIRE_NVCC=1 scripts/linux.sh test-cuda --skip 'Timed|FaintLight|Resumed'

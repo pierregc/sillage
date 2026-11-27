@@ -3,6 +3,8 @@
 Rank 18 of [twenty galaxies to reproduce](twenty-galaxies.md), issue #478. A galaxy alone, no
 encounter: what makes it hard is the dust ring, the bulge and the eye, not an orbit. Everything is
 in `references/sombrero/`: the scene, the look, the flight and the tools that measured each step.
+Working files, takes and sheets stay out of git in a working folder, `$SOMBRERO` in these notes
+and in the scripts.
 What it took is told in the order it was found, because almost every wrong turn looked right at
 the time.
 

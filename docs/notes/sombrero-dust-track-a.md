@@ -4,7 +4,7 @@ Part of #485. One generator, `references/sombrero/tools/dust_track_a.py`, builds
 parts, each a 3D density in ring coordinates (radius, azimuth, height) with its own grains; the bench
 (`dust_bench.py`, imported, not changed) projects them and lays them on the light. Finalists:
 `references/sombrero/dust-tracks/a/f1.json` to `f8.json`. Trials, sheets and frames:
-`~/claude-workspace/sombrero/banc/489/` (`trials.csv`, `finalists/fN/`, `contact.jpg`).
+`$SOMBRERO/banc/489/` (`trials.csv`, `finalists/fN/`, `contact.jpg`).
 
 ```bash
 python3 references/sombrero/tools/dust_track_a.py references/sombrero/dust-tracks/a/f1.json seed=2 law=hubble \
@@ -32,7 +32,7 @@ Measured by taking one part out of the finalists' common base (f2, seed 2, 3072 
 | orbit modulation | elements' masses times exp(0.3 n(azimuth)) along trailing spirals | 2.25 (f6) | nothing on the score; left and right differ more with it |
 | outer height (z_out) | the outer part's elements spread 80 pc in height | 2.20 | nothing the score sees |
 
-So, for Pierre: the speckle is the lane's texture, the thin layer is what makes it read as fine
+So: the speckle is the lane's texture, the thin layer is what makes it read as fine
 filaments at 6 degrees, the inner rim is the dense top band, the far-out dust makes the tips. The veil,
 the filaments as polylines, the web, the sheets and the orbit modulation do not move the score; they
 change what one sees (left against right, from above) more than what is measured.
@@ -60,8 +60,8 @@ change what one sees (left against right, from above) more than what is measured
 Scored at 6144 px (frames rendered at 6144, `share=depth centre=nucleus blur=0.15`, 48 M grains,
 `strat=1`), mean over seeds 1 to 3, old colour law; the frames shown are seed 2 with `law=hubble`.
 
-Ranked as I would show them. Summary: mean over seeds 1 to 3 (each seed); worst bars: mean over seeds;
-law=hubble: seed 2 with the lead's colour law; far: the far lane's offset and width (Hubble 0.45, 0.09 kpc).
+Ranked best first. Summary: mean over seeds 1 to 3 (each seed); worst bars: mean over seeds;
+law=hubble: seed 2 with #500's colour law; far: the far lane's offset and width (Hubble 0.45, 0.09 kpc).
 
 | | recipe | summary | worst bars | phase | law=hubble | far h / w | pass |
 |---|---|---|---|---|---|---|---|
@@ -118,7 +118,7 @@ times wider, which loses the 5 to 10 pc filaments.
 
 About 220 trials in `trials.csv` (26 sweeps, families base, speckle, thin, outer, filaments, strata,
 shape, web, threshold, mix, seeds, orbit, recipes, fine, candidates, ablation, grains). More than the
-brief's 150 because two findings made earlier trials stale: a lucky seed (s11, s15 to s18) and sand
+planned 150 because two findings made earlier trials stale: a lucky seed (s11, s15 to s18) and sand
 (s20 on, `strat=1`). In `params` of trials s01 to s19, `rim_w` is the rim part's depth, renamed
 `rim_tail` when the bench's `law=hubble` took `rim_w`. The web's heights were hashed patches in the
 trials (rectangles at the lower edge); the finalists use a smooth lift.
@@ -126,4 +126,4 @@ trials (rectangles at the lower edge); the finalists use a smooth lift.
 ## Not verified
 
 The far half and the tips by eye at Hubble's native scale; any Swift or GPU render; the finalists'
-colour beyond the lead's `law=hubble`; seeds beyond three.
+colour beyond #500's `law=hubble`; seeds beyond three.

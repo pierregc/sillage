@@ -12,7 +12,7 @@ Scores against Hubble's cached figures (texture-ref.json), on one grid:
   round trip   Hubble's apparent-opacity map laid on the bench light with the bench's compositing
 Each adversary is scored as a map (the figures alone) and laid on the bench light as a frame (what
 the explorers' frames go through). Writes OUTDIR/proofs-<grid>.json and, with --sheets, the three
-sheets for Pierre: hubble-lane.jpg, aller-retour.jpg, p6-adversaires.jpg.
+sheets: hubble-lane.jpg, aller-retour.jpg, p6-adversaires.jpg.
 """
 import argparse
 import glob

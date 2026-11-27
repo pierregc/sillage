@@ -1,8 +1,8 @@
 # The Sombrero's dust as a screen in the engine (#506)
 
 Stage 2 of #506 (epic #485): track B's ring, and track C's f7, on the film's freeze frame, drawn by
-Sillage itself. Images in `~/claude-workspace/sombrero/banc/506/` (`03` to `06`), working files in
-`~/claude-workspace/sombrero/out/506/s2/`.
+Sillage itself. Images in `$SOMBRERO/banc/506/` (`03` to `06`), working files in `$SOMBRERO/out/506/s2/`, out
+of git.
 
 ## Why not the grains
 
@@ -80,7 +80,7 @@ renewing. Each octave is `ratio` the size, `gain` the amplitude; a dab's depth i
 (Wilson-Hilferty, checked by Monte Carlo at 6, 30 and 89 degrees: sd 1.04 to 1.06) and read through
 the tile's lut, so the column keeps B1's statistics radius by radius; octaves narrower than a pixel
 fade out. It costs nothing measurable (a 4K still in 1.8 s either way). Images in
-`~/claude-workspace/sombrero/banc/508/`.
+`$SOMBRERO/banc/508/`.
 
 Close to the disk the dabs are read along the ray's whole line, which may cross the plane behind
 the eye: each dab counts for its share ahead of the eye, the statistics for the layer's share

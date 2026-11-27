@@ -1,9 +1,8 @@
 # The Sombrero's dust sheet: what exists, and how to run the bench
 
-State on 24/11 of the sampler side of #478's dust, for whoever takes it over. The plan, Pierre's
-criteria, the measured figures and the split between agents are in `sombrero-dust-bench.md` on
-branch `sombrero-478`; read it first. This note only says what is already written on branch
-`claude/project-thread-yxfc71` (PR #481), so nobody starts it again.
+State on 24/11 of the sampler side of #478's dust. The plan, the criteria, the measured figures
+and the steps are in `sombrero-dust-bench.md`; read it first. This note says what is already
+written in PR #481.
 
 ## What is written
 
@@ -34,7 +33,7 @@ file round trip, nothing moved without the field.
 
 ## The bench, as it runs today
 
-No run, no GPU, about 30 seconds a try in a cloud session:
+No run, no GPU, about 30 seconds a try on a CPU:
 
 ```bash
 SILLAGE_DUST_BENCH=references/sombrero/tools/dust-sheet.scene.json \
@@ -64,7 +63,7 @@ It is a prototype, and these are its known gaps against the bench the plan asks 
 
 - With `sheet` 0.9 the lane at Hubble's inclination is one dark band with a streaked, clouded
   texture, and a ring face on, in place of separate lines. Nobody has judged it beside Hubble yet,
-  and Pierre has not seen it in Sillage's own renderer.
+  and it has not been seen in Sillage's own renderer.
 - Face on, the fine streaks still read as brushed and a little blocky: value noise shows its
   lattice. Gradient noise, more octaves or a stronger bend are the things to try.
 - The remaining threads stray outside the ring's edges as lone wires at 0.1 of the grains: try 0.
@@ -272,12 +271,12 @@ merge (rim cut, Sobol grains, bilinear splats).
   (2.9 to 3.6) and, for a1, the edges (5.4) and profile (4.3); they pass the spectra, histogram, filaments (at 3072) and
   Minkowski. At 3072 a2 reaches 2.6, close to the left-right floor: score at 6144 where possible.
 - The mirror fails only on symmetry (21 to 27), as it must: its local statistics are Hubble's.
-- Prototypes: p3 ranks first of the six on both grids and p6 second; Pierre found p6 the least far. All are far (5 to 10). What sinks every one of them: too little power along the
+- Prototypes: p3 ranks first of the six on both grids and p6 second; by eye p6 looked the least far. All are far (5 to 10). What sinks every one of them: too little power along the
   lane at 26 to 180 pc (-8 to -19 spreads: sheared noise is smooth along), patchy rather than even
   speckle (intermittency +4 to +10), and kurtosis on the wrong side (spiky, not flat-topped). p6
-  is the best of the six on filaments, Minkowski, edges and symmetry, which is plausibly what Pierre
+  is the best of the six on filaments, Minkowski, edges and symmetry, which is plausibly what the eye
   sees: the right kind of element (veins) in the wrong distribution. p3 wins on the spectrum across
-  and the blobs. The figures were not tuned to match Pierre's order. Before #488 the prototypes
+  and the blobs. The figures were not tuned to match the order by eye. Before #488 the prototypes
   scored 3.5 to 5.4: the old bench's sand supplied fine power by accident.
 
 ### Round trip: can a perfect generator succeed on this bench?
@@ -331,7 +330,7 @@ that stand above the grain; #495 is the place for it.
 - The figures' spreads come from 10 and 6 windows of one galaxy: a distance under 1.5 is noise,
   over 3 is a real difference.
 
-Sheets for Pierre, in `~/claude-workspace/sombrero/banc/487/`: `hubble-lane.jpg` (the lane, near and
+Sheets, in `$SOMBRERO/banc/487/`: `hubble-lane.jpg` (the lane, near and
 far, unwrapped and as opacity maps), `aller-retour.jpg` (the round trip beside Hubble, same scale),
 `p6-adversaires.jpg` (p6, the fBm, the adversaries and the round trip, each map with its bars).
 
@@ -483,7 +482,7 @@ Sheets: `closeup.py OUT.jpg frames...` now adds a fourth row, the far half over 
 The bench's one reddening law cannot give Hubble's colours because Hubble's dust has two kinds of colour,
 not one law that flattens with depth. `colour_law.py measure OUT` reads A_r and A_b against A_g on the
 cleaned 6144 grid (texture.py's estimator, maps smoothed 1.5 px, pixels binned by A_g; curves and fits in
-`colour-law.json`). Sheets for Pierre: `~/claude-workspace/sombrero/banc/499/` (`colour-law-ratio-map.png`,
+`colour-law.json`). Sheets: `$SOMBRERO/banc/499/` (`colour-law-ratio-map.png`,
 `colour-law-curves.png`, `colour-law-tests.png`, `closeup-colour.jpg`).
 
 **Two zones.** `d` is the distance below the lane's upper edge (the highest row where A_g passes 0.6). The

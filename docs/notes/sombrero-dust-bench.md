@@ -1,12 +1,12 @@
 # The Sombrero's dust: a procedural sheet and a bench to tune it
 
-Work order for the agents who take over #478's dust. Read [the Sombrero's note](sombrero.md) first
+The plan for #478's dust. Read [the Sombrero's note](sombrero.md) first
 (what was done, the figures, the wrong turns) and [reproducing a galaxy](reproducing-a-galaxy.md)
 (the traps). This note is the plan for the one problem left that matters: the dust lane.
 
-## What Pierre wants, and what the pictures say
+## What the lane needs, and what the pictures say
 
-Pierre judges by eye and has the last word. His criteria, from the thread of 23-24/11:
+The lane is judged by eye. The criteria, set on 23-24/11:
 
 - The dust reads as **one continuous, cottony cloud layer**, not thin separate concentric threads
   ("spaghetti"), not blots, not tori, with no pattern that repeats around the ring.
@@ -54,10 +54,9 @@ Place the ring's grains by sampling a density that is a smooth **envelope** time
 - A minority of thin threads on top may still help the fibrous look at the rim; their share is a
   parameter to test, 0 included.
 
-The coordinator has announced two `dustRing` fields for this on the sampler side: `sheet` (the
+Two `dustRing` fields do this on the sampler side: `sheet` (the
 share of the ring's grains laid as the continuous sheet, start 0.75) and `cotton` (how uneven, 0 to
-1, absent 0.6), the sheet `thickness` at the rim and a third of it inside, on branch
-`claude/project-thread-yxfc71`. Check that branch first and build on it rather than starting over.
+1, absent 0.6), the sheet `thickness` at the rim and a third of it inside (PR #481).
 
 ## The bench: tune the dust without the galaxy
 
@@ -80,7 +79,7 @@ tuned on its own in seconds. Build `references/sombrero/tools/dust_bench.py` (Nu
 4. **Attenuate.** transmission = exp(-k N), stronger in blue and green than red (the reddening of
    `look.dustReddening` 2), multiplied onto `light.png`.
 5. **Show.** The full frame, then `closeup.py`'s crops (the lane's left end and under the core)
-   **beside Hubble's at the same scale**, labelled in French for Pierre ("Hubble", "Banc", the
+   **beside Hubble's at the same scale**, labelled in French ("Hubble", "Banc", the
    variant), and the `measure.py` figures (lane depth, width, colour, rim solid) on each.
 6. **Grids.** One call draws a sheet of 6 to 12 variants over one or two parameters, under a minute.
 
@@ -92,32 +91,24 @@ calibrate the bench's `k` and kernel on that one take and keep going on the benc
 Optional, if a section is enough: the bench can draw only the left half of the lane or only the
 part under the core, at full resolution, for a faster look.
 
-## Steps and who does them
+## Steps
 
-The coordinator (the project's Opus session) leads, briefs, and is the only one who talks to Pierre.
-Three agents, each with a narrow brief:
+1. The bench: `dust_bench.py`, the light image, the crops and the figures. As a first check it
+   reproduces v6's lane from the v6 sampler's own grains (near 0.44 / 0.27 / 0.57).
+2. Grids on the bench over envelope, octaves, warp, contrast and the threads' share; two or three
+   candidate sheets, with the winning parameters as JSON.
+3. An independent scoring of every sheet against Hubble, on the figures and on the criteria above
+   (threads visible? halos? repetition? edge too sharp?), and a review of the sampler and bench
+   code.
+4. The winner ported into the sampler (`DiskSampler.swift`, the `sheet` and `cotton` fields or
+   their successors, with tests), checked at 2 M as above, its crops compared with the bench's.
+5. Once that sheet is accepted: the 8 M take, the photo, the flight stills, the 4K film.
 
-| agent | does | hands back |
-|---|---|---|
-| **Bench builder** | `dust_bench.py`, the light image, the crops and the figures; reproduces v6's lane from the v6 sampler's own grains as a first check (the bench must score v6 near 0.44 / 0.27 / 0.57) | the tool, one sheet "v6 on the bench beside Hubble" |
-| **Explorer** | grids on the bench over envelope, octaves, warp, contrast, the threads' share; sends the coordinator 2 or 3 candidate sheets for Pierre | sheets, the winning parameters as JSON |
-| **Verifier** | independent: never told which variant the explorer prefers. Scores every sheet against Hubble on the figures and on the criteria above (threads visible? halos? repetition? edge too sharp?), reviews the sampler code and the bench for errors | a short verdict per sheet, findings on the code |
-
-Then one of them (the bench builder fits) ports the winner into the sampler (`DiskSampler.swift`,
-the `sheet` and `cotton` fields or their successors, with tests), checks it at 2 M as above, and
-the verifier compares the 2 M crops with the bench's. Only after Pierre says yes on that sheet: the
-8 M take, the photo, the flight stills, the 4K film (the coordinator's go for each).
-
-Rules for every agent: the commit rules in `AGENTS.md` (author and committer
-`pierregc <72442115+pierregc@users.noreply.github.com>`, **no AI attribution or co-author line**,
-English on GitHub); GPU jobs through `scripts/gpu-lock.sh run <label> <command>`; long jobs
-detached with a log; never kill another process or remove another lock; never delete a branch;
-work in a worktree of your own, not `~/claude-workspace/sillage`. Working files and takes live in
-`~/claude-workspace/sombrero`; images for sheets go on the orphan branch `assets/478-sombrero`.
+Images for sheets go on the orphan branch `assets/478-sombrero`.
 
 ## Done when
 
-- Pierre says the lane reads as Hubble's on the left-end and under-core crops.
+- The lane reads as Hubble's on the left-end and under-core crops, by eye.
 - Figures at 12 Myr within reach of Hubble: near lane 0.42 to 0.50 of the light left, width 0.22
   to 0.32 kpc, rim solid 0.62 to 0.75, red over green 1.25 to 1.45, far lane 0.95 or more.
 - No halo around any light in the lane; no repetition visible round the ring.

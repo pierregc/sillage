@@ -1,14 +1,14 @@
-# Sombrero dust in the engine: handover (#506)
+# Sombrero dust in the engine (#506)
 
-Branch `feat/506-sombrero-engine` (worktree `~/claude-workspace/sillage-wt-506`), cut from `feat/485-dust-texture`, `slabs-479` merged in (c639cf7). Working files in `~/claude-workspace/sombrero/out/506/s2/` (`S2` below); images in `~/claude-workspace/sombrero/banc/506/`.
+Written on branch `feat/506-sombrero-engine`, cut from `feat/485-dust-texture` with `slabs-479` merged in (c639cf7). Working files are in the working folder, not in git: `$SOMBRERO/out/506/s2/` (`S2` below), images in `$SOMBRERO/banc/506/`.
 
-## Build and run
-- Build: `scripts/dev.sh build` in the worktree (about 2 min; `dev.sh lint` before committing) gives `.build/dev/sillage-render`. Run it through `~/claude-workspace/sombrero/sr506.sh` (cd to the worktree, DYLD_LIBRARY_PATH set). Never rebuild while a take or render runs: it replaces the running binary.
-- Every GPU job goes through `scripts/gpu-lock.sh run <label> <cmd...>`, `dev.sh check/test` included (check takes about 4 min).
-- Take: put `scene.json` and `clip.json` (copied from `lib/sombrero-8m-s7`) in a folder, then `gpu-lock.sh run L sr506.sh hires <folder> --particles 8000000 --frames 52|240 --no-video`. 52 frames reach 12.6 Myr (1.7 min); 240 reach 60.5 Myr (7.3 min, 4.1 GB). Peak memory 5.9 GB. `S2/cloudtake.sh <name> <frames> '<clouds json>'` writes `lib/sombrero-8m-<name>` from c1's scene with the clouds block updated.
-- Freeze frame (4K, about 5 s): `S2/draw.sh <name> <scene folder> <look> <flight> [export opts]` writes `S2/<name>.png`. Use absolute paths (it cd's into the worktree).
+## How the images were made
+- `scripts/dev.sh build` (about 2 min) gives `.build/dev/sillage-render`, run through a wrapper that sets DYLD_LIBRARY_PATH (`sillage-render` below). A rebuild while a take or render runs replaces the running binary.
+- GPU jobs ran through `scripts/gpu-lock.sh run <label> <cmd...>`, `dev.sh check/test` included (check about 4 min).
+- Take: put `scene.json` and `clip.json` (copied from `lib/sombrero-8m-s7`) in a folder, then `gpu-lock.sh run L sillage-render hires <folder> --particles 8000000 --frames 52|240 --no-video`. 52 frames reach 12.6 Myr (1.7 min); 240 reach 60.5 Myr (7.3 min, 4.1 GB). Peak memory 5.9 GB. `S2/cloudtake.sh <name> <frames> '<clouds json>'` writes `lib/sombrero-8m-<name>` from c1's scene with the clouds block updated.
+- Freeze frame (4K, about 5 s): `S2/draw.sh <name> <scene folder> <look> <flight> [export opts]` writes `S2/<name>.png`. It takes absolute paths: it changes to the repository's folder.
 - Sheets: `S2/show2.sh <name> <prefix> [label]` writes `<prefix>-cut.jpg`, `-pair.jpg` and `-closeup-film.jpg` (near lane only) to banc/506 and prints the lane figures and the texture score (grid 3072). It is built on `references/sombrero/tools/film_split.py` (`split`, `framing`, `sheet`) and `closeup.py --scale 3840`.
-- Clips (1080p HEVC, 7 s, about 5 min each): `gpu-lock.sh run L sr506.sh export <take> --look <look> --flight S2/clip-cotton-{hubble,tilt}.flight.json --preset 1080p --out <mp4>`. Flights run 0.5 to 60 Myr. Hubble: 800 kpc, 6 deg, 26.5 kpc across, roll 0.1. Tilt: 30 deg elevation, 34 kpc across. `S2/cotton-runs.sh` does both clips plus the edge-on still.
+- Clips (1080p HEVC, 7 s, about 5 min each): `gpu-lock.sh run L sillage-render export <take> --look <look> --flight S2/clip-cotton-{hubble,tilt}.flight.json --preset 1080p --out <mp4>`. Flights run 0.5 to 60 Myr. Hubble: 800 kpc, 6 deg, 26.5 kpc across, roll 0.1. Tilt: 30 deg elevation, 34 kpc across. `S2/cotton-runs.sh` does both clips plus the edge-on still.
 - Edge on: `export ... --flight S2/s-edge-{whole,close}-cotton.flight.json --flight-keys <dir> --flight-at 0 --preset 4k` (whole galaxy from 800 kpc; near ring from (0,-14,0) disk axes, aim (0,-7,0), fov 0.1). Sheet via `S2/tools/sheets.py`.
 - Lane depth vs Hubble: `S2/tools/lane.py <frame-hf.png>` (Hubble: sum 62, tips 57); colour excess by depth: `S2/tools/colour.py`.
 - Layer thickness: `S2/tools/layer.py <take> <myr>`. Clumping and thickness over time: `S2/tools/clump.py <take>`.
@@ -51,7 +51,7 @@ Sampler, `scene.json` `dustRing.clouds` (needs `sheet` > 0):
 - 12-cotton-front and the clips: b1z, depth 0.5, rest 12, the same law, `front` [0.5,0.9]; the clips add `renew` 16.
 - Camera everywhere since stage 2: 800 kpc, fov 0.018632 (26.5 kpc across a 16:9 frame), roll 0.10. Look: `S2/looks/sombrero-506.look.json`, v6's unchanged.
 
-Takes in `~/claude-workspace/sombrero/lib/`:
+Takes in `$SOMBRERO/lib/`:
 
 | take | contents | span | images |
 |---|---|---|---|
@@ -85,7 +85,7 @@ Takes in `~/claude-workspace/sombrero/lib/`:
   - median radius steady to 12 Myr, then -0.19 kpc at 30 and -0.73 kpc at 60;
   - ring peaks 6.07/7.92/8.77 -> 5.22/6.97/7.97;
   - about -12 km/s mean by the end, rms spread 0.26 kpc.
-  - It is the cold launch on `equilibrium.circularSpeed` against the real potential, not the clouds. Track A must fix it.
+  - It is the cold launch on `equilibrium.circularSpeed` against the real potential, not the clouds. Left to track A (#507).
 - Disk plane steady (< 0.1 deg); the bulge's centre drifts +0.22 kpc in z over 60 Myr.
 
 ## Pitfalls
@@ -97,4 +97,4 @@ Takes in `~/claude-workspace/sombrero/lib/`:
 - `dust_track_c`'s process pool needs a `__main__` guard (spawn) or hangs silently; zsh does not split `set -- $v` (use bash).
 - The bench colour law reddens 1.8x too much in the engine. The grey rim must stay tied to `front`, or a grey ring shows all round in the pair.
 - The ring-tied B texture draws radial strokes at the tips (its cells are 4.35 pc along by 27.5 pc in radius). No tile tuning fixes that.
-- Pierre judges the near lane only; the far half is too white to read.
+- Only the near lane is judged; the far half is too white to read.

@@ -3,7 +3,7 @@
 Part of #485, wave 2. The ring is a list of clouds, not a noise formula:
 `references/sombrero/tools/dust_track_c.py` (generator, render through `dust_bench`, score, trial log),
 finalists in `references/sombrero/dust-tracks/c/f1.json` to `f8.json` (each holds its command).
-Output, not in git: `~/claude-workspace/sombrero/banc/491/` (`trials.csv`, `trials/`, `finalists/fN/`,
+Output, not in git: `$SOMBRERO/banc/491/` (`trials.csv`, `trials/`, `finalists/fN/`,
 `contact.jpg`). Wave 2 settings throughout: `share=depth centre=nucleus blur=0.15`, 24 M grains.
 
 ## The generator
@@ -50,7 +50,7 @@ a function of (radius, azimuth, height) and a seed.
   radius 7.8-10 kpc. A rim at 8.8 left the tips too light (histogram 5-6, stationarity +11 spreads),
   and moving it to 9.8 halved both. Inner cut 5.8 kpc, shifted 0.2 kpc away from us (near side 6.0,
   far 5.6, after #495's 5.9 against 5.5), flat body, faded over its last 1.5 kpc. This contradicts the
-  brief's 8.8: either the outer dust is thicker than this flare, or there is dust past 8.8.
+  planned 8.8: either the outer dust is thicker than this flare, or there is dust past 8.8.
 - **Sampling.** Grains of very unequal weight left 1 px "ridges" of sand at 6144. The 3072 screen
   could not see them: 2.94 at 3072 became 4.59 at 6144. Drawing each sub-clump in proportion to its
   mass (`pick` 1, equal-weight grains) brought filaments from 6.4 to 3.6.
@@ -93,7 +93,7 @@ storeys are missing (the dense grey-blue top band over an orange zone crossed by
 lane runs lower than Hubble's (the rim at 9.8). The tips are broad fluffy fans, and the right one is
 not narrower or darker. The far half is a faint line at the right height but broad at the sides.
 Top views: a dense knotted inner rim and a mottled body, no spokes. f8 shows a few short dark
-dashes there, the same stray branches. I would show Pierre f1 first. It is the most varied along
+dashes there, the same stray branches. f1 comes first. It is the most varied along
 the lane and the one track C idea that helped. What still separates it from Hubble is the web of
 crisp 5-10 pc filaments and the dense top band; the second likely needs a separate rim component
 (track A's idea).

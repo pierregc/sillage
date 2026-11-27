@@ -1,12 +1,12 @@
 # Sombrero dust: the finalists from above, through time and at a grazing angle (#504)
 
 Part of #485. The finalists of the three tracks (#489 A, #490 B, #491 C) were tuned at Hubble's angle, 6
-degrees from edge on, at one instant. The film Pierre aims for (#478) opens from the zenith with time
+degrees from edge on, at one instant. The film aimed for (#478) opens from the zenith with time
 flowing, freezes on Hubble's axis, then flies low over the dust and down into the disk. This note reads
 each finalist there. It judges; it changes nothing in the rings.
 
 Tool: `references/sombrero/tools/dust_views.py` (imports the bench and the tracks' generators, edits
-none). Output, not in git: `~/claude-workspace/sombrero/banc/504/` (one folder a finalist, and the
+none). Output, not in git: `$SOMBRERO/banc/504/` (one folder a finalist, and the
 sheets `<track>-above.jpg`, `-time.jpg`, `-time-hubble.jpg`, `-grazing.jpg`).
 
 ```bash
@@ -86,7 +86,7 @@ reverse recipe on C f1, f2, f7. Grains: C and B 24 M, A 48 M with `strat=1`, A a
   0.96, 0.98, 0.99 at -40 to +40 Myr; A f1 0.04, 0.13, 0.28, 0.51, 0.73, 0.88, 0.96; only C f6 (clouds
   sheared 0 to 80 Myr) stays trailing back to -20 (0.80) and is even at -40 (0.45). An opening that
   starts 20 Myr before the freeze shows clouds that lean the wrong way for a spiral and straighten as
-  time runs; an astronomer would see it, Pierre may not.
+  time runs; an astronomer would see it, most viewers may not.
 - **The look one wants from above comes at the cost of the match.** Every finalist reads most like a
   spiral's dust at +40 Myr (coherence 0.65 to 0.79, 96 to 99 % trailing: fine combed feathers) and that
   is where its score at Hubble's angle is worst. Hubble's blotchy speckle needs young, nearly round

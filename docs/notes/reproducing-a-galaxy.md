@@ -1,7 +1,7 @@
 # Reproducing a known galaxy
 
 How to make Sillage draw a galaxy someone has photographed, so that the frames stand beside the
-picture: written for an agent that starts from an issue and a picture and has not seen the earlier
+picture: written for someone who starts from an issue and a picture and has not seen the earlier
 work. Three galaxies were done this way, each with its note: [the Cartwheel](cartwheel.md) (a
 collision ring), [NGC 2207 and IC 2163](ngc2207.md) (a grazing pair) and [the Sombrero](sombrero.md)
 (a lone galaxy with a dust ring). [Twenty galaxies to reproduce](twenty-galaxies.md) lists the
@@ -88,7 +88,7 @@ For the Antennae, the Mice and the other pairs most of the above holds; what cha
 - A dust strength of 1 saturates: lanes go black and wide. Tune it against the lane's measured
   depth.
 - `inside.dustSlabs` (about 1.2) keeps a ring's far side from shading the core in flight keys.
-- Reference pictures cannot be downloaded from a cloud session: fetch them on the Mac, keep the
+- Reference pictures cannot be downloaded from a cloud machine: fetch them on the Mac, keep the
   credit and licence beside them.
 - Show the person close-ups beside the picture before any long take or export. The eye catches
   what the figures miss: the Sombrero's dust passed every figure as threads and still read as
