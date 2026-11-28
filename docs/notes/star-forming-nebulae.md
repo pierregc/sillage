@@ -73,7 +73,9 @@ dropped at once for not being a young knot.
 
 `Tests/Fixtures/engines/frames/nebulae.rgba` is the fixture take in `webb` with an HII region round
 every knot, which the CUDA engine is held to as it is held to `glow` (`CUDAPostTests`, PSNR 48 dB
-at least). It was written on the M4 Max, which gives the other five frames to the bit.
+at least). On the CI's CPU target it gives 51.4 dB, the largest difference 30 levels and 0.11 % of
+the pixels over 8 (`glow`: 66.9 dB): the regions' edges land a rounding apart. It was written on
+the M4 Max, which gives the other five frames to the bit.
 
 ## Left
 
