@@ -1,21 +1,21 @@
 {
-  "capturedFrame" : 560,
+  "capturedFrame" : 536,
   "ceiling" : -1,
-  "map" : "heic0615a.map.json",
-  "megayears" : 592.3460321044922,
+  "map" : "heic-at.map.json",
+  "megayears" : 573.3293424224853,
   "picture" : "heic0615a-large.jpg",
-  "score" : 0.7697449525197347,
-  "seconds" : 8.2,
-  "storedFrame" : 140,
-  "trials" : 400055,
+  "score" : 0.673084020614624,
+  "seconds" : 1.1,
+  "storedFrame" : 134,
+  "trials" : 490,
   "view" : {
-    "azimuth" : 133.29969715389808,
-    "elevation" : -7.9650434883240635,
+    "azimuth" : 99.90062980438847,
+    "elevation" : 3.9294797849208454,
     "kpcPerWidth" : 20.9,
     "origin" : [
-      0.46438289478052697,
-      0.4258630895826469
+      0.4289859893505869,
+      0.5087399064880584
     ],
-    "roll" : -48.283662144008794
+    "roll" : -59.885923445157154
   }
 }

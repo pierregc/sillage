@@ -1,21 +1,21 @@
 {
-  "capturedFrame" : 588,
+  "capturedFrame" : 536,
   "ceiling" : -1,
-  "map" : "antennae.map.json",
-  "megayears" : 614.5000506591797,
+  "map" : "wide-at.map.json",
+  "megayears" : 573.3293424224853,
   "picture" : "antennae-crop.jpg",
-  "score" : 0.663001815478007,
-  "seconds" : 7.1,
-  "storedFrame" : 147,
-  "trials" : 69363,
+  "score" : 0.6501238743464152,
+  "seconds" : 2,
+  "storedFrame" : 134,
+  "trials" : 21977,
   "view" : {
-    "azimuth" : 102.23758475359595,
-    "elevation" : 20.65040700727349,
+    "azimuth" : 121.9487645034061,
+    "elevation" : 8.788902073502303,
     "kpcPerWidth" : 102.5,
     "origin" : [
-      0.422905800604833,
-      0.5509390340200859
+      0.42059666280403846,
+      0.5543730243978159
     ],
-    "roll" : -83.23134393426605
+    "roll" : -97.80645563833953
   }
 }

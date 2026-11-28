@@ -338,3 +338,32 @@ lower and the heart matches. The stills of both went to Pierre.
 The stills (`assets/antennae`, `stills-526/`): the wide match in the `photograph` look beside the
 panel, both Hubble framings beside `heic0615a`, and the merger, halfway and the settled remnant
 from the wide view.
+
+## Both pictures at once (#525, #526 again)
+
+Pierre (2026-11-28): the right candidate matches both pictures, the wide one and Hubble's, each at
+its own zoom and framing, at the same moment. `tools/both.py` scores the 30 finalists' 500 k takes
+so: Hubble's `heic0615a` (20.9 kpc across) matched over the same window as the wide panel, the
+moment where the mean of the two curves peaks, then both matched again there, Hubble's within 15
+degrees of the wide view's direction. The two pictures look from the same place, and Hubble's frame
+turns 30.6 degrees on the sky (#522); the match takes the roll freely, so the roll difference is the
+check: 8 of the 29 land within 12 degrees of it, the other 21 fit Hubble's frame only turned some
+other way. Rows in `both.csv`.
+
+Among the 8, **B, r2-2-03-02** (same family as number 2, pericentre 7.1 kpc, eccentricity 0.930,
+inclinations 67.6 and 46.1, arguments 8.4 and 31.8, mass ratio 0.856, disks 0.888, seed 20261128)
+has the best wide score, 0.604, with Hubble at 0.728: two bodies one above the other, both tails.
+A (r1-1-140) has the best mean, 0.669, but on Hubble's score (0.778) with the wide one at 0.559.
+The sheet is `sheets/sheet-525-both.jpg` on `assets/antennae`. `scene.json` is B's now.
+
+**B's 8 M take**: 148 to 823 Myr, 2 956 s, 13.9 GB, in `~/claude-workspace/antennae/lib/antennae-8m-b`
+on the Mac; first passage 201 Myr (5.4 kpc), second 535, merger 601, settled 675. Alone, the wide
+panel matches best at 580 Myr (0.667, the free match agrees) and Hubble best at 564 (0.773), but
+neither with the other's direction. Scanned between them, the moments where Hubble's frame lands
+at the sky's turn are 570 and 573 Myr; **573.3** is kept (`match.json`: wide 0.650, elevation 8.8,
+azimuth 121.9, roll -97.8; `match-hubble.json`: 0.673 within 15 degrees of it, roll -59.9, 38
+degrees from the wide one), 38 Myr after the second passage (Karl's 40) and 28 before the merger.
+The film freezes there. Stills in `stills-526b/` on `assets/antennae`.
+
+A match option that holds Hubble's roll to the wide one's plus the sky's 30.6 degrees would make
+this a single search instead of a scan.
