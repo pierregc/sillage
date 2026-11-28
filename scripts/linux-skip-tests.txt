@@ -4,6 +4,7 @@ BarnesHutTests+Mac.swift      # Metal
 CheckpointTests+Mac.swift     # AVFoundation, Metal
 DiskProbeTests+Mac.swift      # DiskProbe.run, in DiskProbeRun, which draws on Metal
 DustGlowTests.swift           # Metal
+NebulaTests.swift             # Metal
 EngineFixtureTests.swift      # Metal
 ExportTests+Mac.swift         # TakeExport, which needs a Metal device, and AVFoundation
 FullPassTrackTests.swift      # Metal
