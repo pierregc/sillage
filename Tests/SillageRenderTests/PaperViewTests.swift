@@ -29,7 +29,9 @@ struct PaperViewTests {
     }
 
     static func times(_ p: [[Double]], _ q: [[Double]]) -> [[Double]] {
-        (0..<3).map { r in (0..<3).map { k in (0..<3).reduce(0) { $0 + p[r][$1] * q[$1][k] } } }
+        (0..<3).map { r in
+            (0..<3).map { k in (0..<3).reduce(0.0) { (sum: Double, j: Int) in sum + p[r][j] * q[j][k] } }
+        }
     }
 
     /// An L on the orbit plane with a mast off it: no rotation or mirror maps it onto itself.

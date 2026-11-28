@@ -65,6 +65,7 @@ RecordingShaders expandSnapshots metal-only: take playback
 RecordingShaders expandSnapshots21 metal-only: take playback
 
 Shaders splatVertex cuda
+Shaders nebulaVertex cuda
 Shaders splatTracerVertex cuda
 Shaders starfieldVertex cuda
 Shaders galaxyFieldVertex cuda
@@ -86,7 +87,7 @@ Shaders webCarrierFragment cuda in webCarrierVertex webCarrierTracerVertex
 Shaders webResolveVertex metal-only: the triangle that covers the frame, where CUDA launches webResolveFragment a pixel
 Shaders webResolveFragment cuda
 Shaders webGlowFragment cuda
-Shaders splatFragment cuda in splatVertex splatTracerVertex
+Shaders splatFragment cuda in splatVertex splatTracerVertex nebulaVertex
 Shaders countVertex cuda
 Shaders countTracerVertex cuda
 Shaders countFragment cuda in countVertex countTracerVertex

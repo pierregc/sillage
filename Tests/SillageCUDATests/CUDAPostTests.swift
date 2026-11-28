@@ -29,6 +29,7 @@ struct CUDAPostTests {
         ("ember", 48, 40, 0.003),
         ("webb", 48, 40, 0.003),
         ("glow", 48, 40, 0.003),
+        ("nebulae", 48, 40, 0.003),
     ]
 
     @Test(arguments: tolerances)

@@ -1486,6 +1486,78 @@ enum Shaders {
             return out;
         }
 
+        #if defined(SILLAGE_NEBULAE) || !defined(__METAL_VERSION__)
+        SHARED float nebulaHash(uint n) {
+            n = (n ^ (n >> 16u)) * 0x7feb352du;
+            n = (n ^ (n >> 15u)) * 0x846ca68bu;
+            n = n ^ (n >> 16u);
+            return float(n) * (1.0f / 4294967296.0f);
+        }
+
+        // A young knot's HII region as a cloud of red gas around it (#529), drawn with the light
+        // and dimmed by the dust in front as a star is. `nebula` holds the look's strength, the
+        // region's radius in kpc once grown and the megayears its light fades over, `colour` its
+        // colour, Halpha's by default. Six puffs a
+        // knot, `vid` counting them: one on the knot, five scattered about it by its index, so
+        // the region is lumpy and the same from one frame to the next. Neighbouring regions
+        // overlap into trails where the knots are dense.
+        SHARED Splat nebulaSplat(uint vid, device const float3 *positions, device const float *formation,
+                                 device const float *luminosity, device const uint *component,
+                                 constant SplatUniforms &u, device const float2 *stellar, float4 nebula,
+                                 float4 colour) {
+            uint index = vid / 6u;
+            uint puff = vid - index * 6u;
+            uint kind = component[index];
+            float born = formation[index];
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0f)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
+            float lit = exp(-ageMyr / max(nebula.z, 1e-3f));
+            if (!(knot && nursery) || lit < 0.01f) { return culledSplat(); }
+            // It swells from a third of its size as its stars clear the cloud.
+            float radius = nebula.y * (0.35f + 0.65f * (1.0f - lit));
+            float3 offset = float3(0.0f);
+            float size = 0.6f * radius;
+            if (puff > 0u) {
+                uint seed = index * 6u + puff;
+                offset = float3(nebulaHash(seed * 6u) + nebulaHash(seed * 6u + 1u) - 1.0f,
+                                nebulaHash(seed * 6u + 2u) + nebulaHash(seed * 6u + 3u) - 1.0f,
+                                nebulaHash(seed * 6u + 4u) + nebulaHash(seed * 6u + 5u) - 1.0f)
+                    * radius;
+                size = 0.4f * radius;
+            }
+            Splat out = culledSplat();
+            out.position = u.viewProjection * float4(positions[index] + offset, 1.0f);
+            float depth = out.position.w;
+            if (depth <= 1e-3f) { return culledSplat(); }
+            float perPixel = u.projectionScale / depth;
+            float span = clamp(2.0f * size * perPixel, u.minimumSize, 511.0f);
+            float length = span / perPixel;
+            float spread = u.referenceArea / (length * length);
+            // A puff the eye is inside of is no ball in front of it: it fades as the eye nears it.
+            float fade = saturate(depth / (2.0f * size) - 1.0f);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            fade *= insideFade(depth, length, u.inside);
+            if (fade <= 0.0f) { return culledSplat(); }
+            out.slab = insideStarSlabs(insideSlabAt(depth, u), u.inside);
+            #else
+            uint slabIndex = uint(clamp((depth - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f);
+            out.slab = half4(
+                slabIndex > 0u ? half(1.0f) : half(0.5f),
+                slabIndex > 1u ? half(1.0f) : (slabIndex == 1u ? half(0.5f) : half(0.0f)),
+                slabIndex > 2u ? half(1.0f) : (slabIndex == 2u ? half(0.5f) : half(0.0f)),
+                slabIndex == 3u ? half(0.5f) : half(0.0f));
+            #endif
+            float massToLight = synthesised(stellar, u, ageMyr).y * u.luminosityNormalisation;
+            float light = u.brightness * luminosity[index] * massToLight * lit * nebula.x * spread * fade
+                / 6.0f;
+            out.pointSize = span;
+            out.color = half3(min(chromaticity(colour.rgb) * light, float3(6.0e4f)));
+            return out;
+        }
+        #endif
+
         // How far a pixel stands from the centre of its point's square, squared, in kernel radii.
         // `coord` is its place in the square, as Metal's point_coord gives it. Past one, in the
         // corners of the square, the splat leaves the pixel alone.
@@ -1519,6 +1591,20 @@ enum Shaders {
                                          component, u, galaxy, frames, smoothing, stellar, traits,
                                          rampKeys, ramps, column));
         }
+
+        #if defined(SILLAGE_NEBULAE)
+        vertex SplatOut nebulaVertex(uint vid [[vertex_id]],
+                                     device const float3 *positions [[buffer(0)]],
+                                     device const float *formation [[buffer(8)]],
+                                     device const float *luminosity [[buffer(2)]],
+                                     device const uint *component [[buffer(3)]],
+                                     constant SplatUniforms &u [[buffer(4)]],
+                                     device const float2 *stellar [[buffer(9)]],
+                                     constant float4 *nebula [[buffer(24)]]) {
+            return splatOut(nebulaSplat(vid, positions, formation, luminosity, component, u, stellar,
+                                        nebula[0], nebula[1]));
+        }
+        #endif
 
         // A light tracer (#238): positions with their formation times from buffer 18, velocities
         // with their words from 19, the tree's spacing from 14 to 16, and each galaxy's scale

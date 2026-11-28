@@ -64,6 +64,10 @@ public final class Renderer {
     /// The dust pass of a look that widens the dust's kernels (#478).
     private var widenedDust: MTLRenderPipelineState?
     private var widenedUnavailable = false
+    /// The young knots' HII regions (#529), from and to the outside and from inside a galaxy,
+    /// each from a library of its own, built the first time a look asks for them.
+    private var nebulaPipelines: [Bool: MTLRenderPipelineState] = [:]
+    private var nebulaeUnavailable = false
     /// What a flight's frame is drawn with from inside a galaxy (#297), and through which a
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
     /// did.
@@ -881,6 +885,22 @@ public final class Renderer {
             }
         }
 
+        // The HII regions after the stars, through the same dust (#529); massive particles alone.
+        func drawNebulae(_ encoder: MTLRenderCommandEncoder) {
+            guard settings.nebulae > 0, !settings.plain, !parts.massive.isEmpty,
+                let pipeline = nebulaPipeline(inside: deep != nil)
+            else { return }
+            var nebula = [
+                SIMD4<Float>(settings.nebulae, settings.nebulaSize, settings.nebulaMyr, 0),
+                SIMD4<Float>(settings.nebulaColour, 0),
+            ]
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setVertexBytes(&nebula, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 24)
+            encoder.drawPrimitives(
+                type: .point, vertexStart: parts.massive.lowerBound * Self.nebulaPuffs,
+                vertexCount: parts.massive.count * Self.nebulaPuffs)
+        }
+
         for pass in plan.passes {
             var uniforms = plan.uniforms(for: pass)
             switch pass {
@@ -1058,6 +1078,7 @@ public final class Renderer {
                 bindStars(encoder)
                 if let deep {
                     drawParts(encoder, massive: deep.splat, tracers: deepTracers?.splat)
+                    drawNebulae(encoder)
                     // The light so far resolved for the bloom before the point stars join it.
                     if let beforeStars {
                         encoder.endEncoding()
@@ -1090,8 +1111,10 @@ public final class Renderer {
                     }
                 } else if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
                     drawParts(encoder, massive: wide.massive, tracers: wide.tracers)
+                    drawNebulae(encoder)
                 } else {
                     drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
+                    drawNebulae(encoder)
                 }
 
             case .plain:
@@ -1162,6 +1185,28 @@ public final class Renderer {
                 library: library, device: device)
         }
         return widenedDust
+    }
+
+    /// Puffs a knot's HII region is drawn as: `nebulaSplat` in the shader.
+    static let nebulaPuffs = 6
+
+    /// Nil when it could not be built, and the frame is then drawn without its HII regions.
+    private func nebulaPipeline(inside: Bool) -> MTLRenderPipelineState? {
+        if let built = nebulaPipelines[inside] { return built }
+        guard !nebulaeUnavailable else { return nil }
+        do {
+            let source = "#define SILLAGE_NEBULAE 1\n" + (inside ? InsidePass.source : Shaders.source)
+            let library = try ShaderCache.library(source, on: device)
+            let built = try Self.additive(
+                "nebulaVertex", "splatFragment", writing: 0, attachments: 2, format: .rgba16Float,
+                library: library, device: device, dustRed: settings.dustReddening != 1,
+                screenLaw: inside && self.inside?.settings.dustScreen?.law != nil)
+            nebulaPipelines[inside] = built
+            return built
+        } catch {
+            nebulaeUnavailable = true
+            return nil
+        }
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.

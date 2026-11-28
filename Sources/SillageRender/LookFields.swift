@@ -43,6 +43,10 @@ public enum LookFields {
         ("dustWeb", "share of the dust drawn as filaments in each disk's plane, 0 to 1"),
         ("dustGlow", "how brightly the dust glows, as in a mid-infrared picture; 0 none"),
         ("dustGlowColour", "the glow's colour, linear sRGB"),
+        ("nebulae", "how brightly each young knot's HII region glows around it, a few tens; 0 none"),
+        ("nebulaSize", "an HII region's radius once grown, in kpc"),
+        ("nebulaMyr", "megayears over which an HII region's light fades"),
+        ("nebulaColour", "an HII region's colour, linear sRGB"),
         (
             "dustReddening",
             "how much more the dust takes from blue and green than from red; 0 grey, 1 as drawn before, above browner"

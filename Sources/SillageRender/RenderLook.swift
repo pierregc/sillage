@@ -74,6 +74,16 @@ public struct RenderLook: Sendable, Equatable {
     /// in `dustGlowColour`, on top of what it absorbs. Zero, the default, draws no glow.
     public var dustGlow: Float
     public var dustGlowColour: SIMD3<Float>
+    /// How brightly each young knot's HII region glows as a cloud of red gas around it, against
+    /// the knot's own light (#529, docs/notes/star-forming-nebulae.md). Zero, the default, draws
+    /// none.
+    public var nebulae: Float
+    /// The region's radius once grown, in kpc.
+    public var nebulaSize: Float
+    /// The megayears over which its light fades as its stars blow the gas away.
+    public var nebulaMyr: Float
+    /// Its colour, linear sRGB; Halpha's with Hbeta and [OIII] by default, as `hiiColour` has it.
+    public var nebulaColour: SIMD3<Float>
     /// How much more the dust takes from blue and green than from red, against the reddening
     /// every look draws with (#478): 1, the default, is that, 0 grey dust, above 1 browner lanes.
     public var dustReddening: Float
@@ -126,6 +136,10 @@ public struct RenderLook: Sendable, Equatable {
         dustWeb: Float = 0,
         dustGlow: Float = 0,
         dustGlowColour: SIMD3<Float> = SIMD3(1, 0.26, 0.24),
+        nebulae: Float = 0,
+        nebulaSize: Float = 0.15,
+        nebulaMyr: Float = 5,
+        nebulaColour: SIMD3<Float> = SIMD3(1, 0.34, 0.30),
         dustReddening: Float = 1,
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
@@ -162,6 +176,10 @@ public struct RenderLook: Sendable, Equatable {
         self.dustWeb = dustWeb
         self.dustGlow = dustGlow
         self.dustGlowColour = dustGlowColour
+        self.nebulae = nebulae
+        self.nebulaSize = nebulaSize
+        self.nebulaMyr = nebulaMyr
+        self.nebulaColour = nebulaColour
         self.dustReddening = dustReddening
         self.oldWidth = oldWidth
         self.bulgeWidth = bulgeWidth
@@ -210,6 +228,10 @@ public struct RenderLook: Sendable, Equatable {
         out.dustGlowColour = SIMD3(
             f(a.dustGlowColour.x, b.dustGlowColour.x), f(a.dustGlowColour.y, b.dustGlowColour.y),
             f(a.dustGlowColour.z, b.dustGlowColour.z))
+        out.nebulae = f(a.nebulae, b.nebulae)
+        out.nebulaSize = f(a.nebulaSize, b.nebulaSize)
+        out.nebulaMyr = f(a.nebulaMyr, b.nebulaMyr)
+        out.nebulaColour = a.nebulaColour + (b.nebulaColour - a.nebulaColour) * u
         out.dustReddening = f(a.dustReddening, b.dustReddening)
         out.oldWidth = f(a.oldWidth, b.oldWidth)
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
@@ -327,6 +349,10 @@ extension RenderLook: Codable {
             dustWeb: try c.value(.dustWeb, or: d.dustWeb),
             dustGlow: try c.value(.dustGlow, or: d.dustGlow),
             dustGlowColour: try c.value(.dustGlowColour, or: d.dustGlowColour),
+            nebulae: try c.value(.nebulae, or: d.nebulae),
+            nebulaSize: try c.value(.nebulaSize, or: d.nebulaSize),
+            nebulaMyr: try c.value(.nebulaMyr, or: d.nebulaMyr),
+            nebulaColour: try c.value(.nebulaColour, or: d.nebulaColour),
             dustReddening: try c.value(.dustReddening, or: d.dustReddening),
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
