@@ -1,0 +1,21 @@
+{
+  "capturedFrame" : 588,
+  "ceiling" : -1,
+  "map" : "antennae.map.json",
+  "megayears" : 614.5000506591797,
+  "picture" : "antennae-crop.jpg",
+  "score" : 0.663001815478007,
+  "seconds" : 7.1,
+  "storedFrame" : 147,
+  "trials" : 69363,
+  "view" : {
+    "azimuth" : 102.23758475359595,
+    "elevation" : 20.65040700727349,
+    "kpcPerWidth" : 102.5,
+    "origin" : [
+      0.422905800604833,
+      0.5509390340200859
+    ],
+    "roll" : -83.23134393426605
+  }
+}
