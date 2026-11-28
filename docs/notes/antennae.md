@@ -253,3 +253,59 @@ the settled remnant.
 
 Scripts: `tools/clock.py`, `tools/tails.py`, `tools/view2key.py` and `tools/photokey.sh` (a still
 from a match, cropped to the panel), `tools/sheet.py`.
+
+## Hundreds of previews, a preselection of the score (#525)
+
+Round Karl at eccentricity 0.95 (#524), over the eight parameters that move the tails: the
+pericentre (7 to 14 kpc), the eccentricity (0.92 to 0.98), both disks' inclinations (40 to 80
+degrees) and arguments (0 to 60 and 30 to 90), the mass ratio (0.8 to 1) and both disks' size
+(`diskScale`, 0.5 to 1, a new override of `make_scene.py` with `massRatio`). The halos' extent is
+left out: #524 found it moves the clock by a few percent.
+
+**The size.** On three scenes, 200 k gives the 500 k clock within 2 %, and the free match's
+moment within 6 Myr and its view within a few degrees, with the same ranking; 100 k moves the
+second passage by 6 % and its match off. Each scene is explored at 200 k as a whole story, run at
+200 k with sticky gas and matched: 1.6 minutes, the matches off the GPU while the next scene runs.
+
+**The rounds**, one night on the M4 Max (2026-11-27 to 28), by `tools/sweep.sh` and
+`tools/rounds.sh`, rows in `sweep.csv`:
+
+| | scenes | rule 1 drops (free match outside the window) | rule 2 drops (turns the wrong way) | kept |
+| --- | ---: | ---: | ---: | ---: |
+| round 1, a Latin hypercube | 220 | 81 (7 plain disks, 74 the merged remnant) | 62 more | 114 |
+| round 2, 10 round each of the best 5 families | 50 | 0 | 6 | 44 |
+| the best 30 again at 500 k, another seed | 30 | 1 | 0 | 29 |
+
+The window runs from 20 Myr after the first pericentre to the merger, so the picture's two nuclei
+are still apart. Rule 2: seen from the matched view, the disk on the north nucleus turns clockwise
+and the southern one counter-clockwise, as both papers' models do from their own views (the
+spin's share towards the viewer: Karl -0.33 and +0.60, Privon -0.11 and +0.91). Rule 3: the 29
+survivors are grouped in families (closer than 0.25 rms in the unit hypercube), at most four a
+family; a scene whose score moved between its 200 k and 500 k runs by more than its lead over the
+last one kept is flagged noisy. Seven families at four a family give 17, not 25: round 2 packed
+its scenes round five families.
+
+**What the score follows** (`plots-525.png`): the pericentre above all, closer is better (0.62 to
+0.66 under 9 kpc, under 0.58 past 12), then a lower eccentricity. The inclinations, arguments,
+mass ratio and disk size spread the score without a trend. The best scenes sit at the bottom of
+the pericentre's range, so a round below 7 kpc is worth a try. Every finalist lands 43 to 54 Myr
+after the second passage, Karl's 40.
+
+### The choice: number 2, r2-2-03-05
+
+Pierre left the choice to the night. The sheet (`sheets/sheet-525-25.jpg` on `assets/antennae`):
+the panel, the 17 finalists at their matched moments and views, and the approach, the first
+passage and the matched moment of the best five.
+
+Number 2 rather than number 1 (0.663, same family): its score holds between the two seeds (0.661
+at 200 k, 0.660 at 500 k, against 0.643 and 0.663), and it draws the same thing: the northern tail
+rising and bending as in the picture, the southern one long and curving west, two bodies apart in
+the heart. Pericentre 8.03 kpc, eccentricity 0.931, inclinations 67.2 and 47.3, arguments 13.2
+and 39.0, mass ratio 0.859, disks 0.826 of Karl's, seed 20261128. In its run: first passage 202
+Myr (6.0 kpc), second 562, matched at 608 (46 after the second; elevation 18, azimuth 103, roll
+-85), merger 636, settled 709. Its tails: north 30 kpc at position angle 55, south 46 kpc at 191,
+against the picture's 48 at 34 and 67 at 218. Written as `references/antennae/scene.json`.
+
+What it still misses: the heart is rounder and bigger than the picture's two bright bodies, the
+southern tail opens into a fan on its outer side, and the second passage comes 360 Myr after the
+first, not Karl's 560: the closer, more bound orbit that matches best is also faster.

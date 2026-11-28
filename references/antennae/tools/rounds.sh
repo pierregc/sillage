@@ -16,6 +16,6 @@ until_done "$W/plan-r1.csv" "$e1"; log "round 1: $(grep -c ',ok,' "$W/sweep.csv"
 python3 "$T/plan.py" "$W/plan-r2.csv" 50 2 --around "$W/sweep.csv" 5 0.3
 SIZE=200000 "$T/sweep.sh" "$W" "$W/plan-r2.csv" &
 until_done "$W/plan-r2.csv" "$e2"; log "round 2 done"
-python3 "$T/select.py" "$W" finalists 30 "$W/plan-f.csv"
+python3 "$T/pick.py" "$W" finalists 30 "$W/plan-f.csv"
 SIZE=500000 KEEP_TAKE=1 "$T/sweep.sh" "$W" "$W/plan-f.csv"
-python3 "$T/select.py" "$W" keep 25 "$W/final25.csv" >> "$W/logs/rounds.log"; log "finalists done"
+python3 "$T/pick.py" "$W" keep 25 "$W/final25.csv" >> "$W/logs/rounds.log"; log "finalists done"
