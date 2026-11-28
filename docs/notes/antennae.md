@@ -309,3 +309,32 @@ against the picture's 48 at 34 and 67 at 218. Written as `references/antennae/sc
 What it still misses: the heart is rounder and bigger than the picture's two bright bodies, the
 southern tail opens into a fan on its outer side, and the second passage comes 360 Myr after the
 first, not Karl's 560: the closer, more bound orbit that matches best is also faster.
+
+## The 8 M take (#526)
+
+`references/antennae/scene.json` (#525's number 2) at 8 M visible, all massive, and 12 M of halo,
+sticky gas, from 148 to 847 Myr: the approach, the first passage at 202, the second at 565, the
+merger at 635 and the remnant settled at 704 (23 kpc across), the tails still falling back. The
+whole story fits; no coarser cadence was needed. Cost on the M4 Max (2026-11-28): 4 312 s (the run
+estimated 1.2 h), peak 6.1 GB, a 14.4 GB take, step 0.088 Myr. The take is on the Mac in
+`~/claude-workspace/antennae/lib/antennae-8m`.
+
+At 8 M the clock moves little: the first pericentre at 6.14 kpc against 6.0, the second 3 Myr
+later, the merger 1 Myr earlier.
+
+**The match** (`match.json`), scale held at 102.5 kpc, from the 500 k match's moment and view
+with `--within 100`: 0.663 at 614.5 Myr, 6 Myr later than at 500 k, elevation 20.7, azimuth
+102.2, roll -83.2 (2 degrees from the 500 k view). The free match over the whole take lands on
+the same frame and view.
+
+**Hubble's framing** (20.9 kpc across). Held at the wide match's moment and within 20 degrees of
+its view, `heic0615a` scores 0.609: the heart from there is one round body with its dust. Free
+within 60 Myr, it scores 0.770 at 592 Myr from another view (elevation -8, azimuth 133, roll -48;
+`match-hubble.json`): two bodies apart, NGC 4039's below with its lane, as in the picture. The
+film's close-up (#527, #528) has to choose: freeze on the wide match and close in on a heart that
+does not look like Hubble's, or freeze about 22 Myr earlier, where the wide picture scores
+lower and the heart matches. The stills of both went to Pierre.
+
+The stills (`assets/antennae`, `stills-526/`): the wide match in the `photograph` look beside the
+panel, both Hubble framings beside `heic0615a`, and the merger, halfway and the settled remnant
+from the wide view.

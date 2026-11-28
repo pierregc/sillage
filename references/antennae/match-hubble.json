@@ -1,0 +1,21 @@
+{
+  "capturedFrame" : 560,
+  "ceiling" : -1,
+  "map" : "heic0615a.map.json",
+  "megayears" : 592.3460321044922,
+  "picture" : "heic0615a-large.jpg",
+  "score" : 0.7697449525197347,
+  "seconds" : 8.2,
+  "storedFrame" : 140,
+  "trials" : 400055,
+  "view" : {
+    "azimuth" : 133.29969715389808,
+    "elevation" : -7.9650434883240635,
+    "kpcPerWidth" : 20.9,
+    "origin" : [
+      0.46438289478052697,
+      0.4258630895826469
+    ],
+    "roll" : -48.283662144008794
+  }
+}
