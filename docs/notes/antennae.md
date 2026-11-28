@@ -367,3 +367,31 @@ The film freezes there. Stills in `stills-526b/` on `assets/antennae`.
 
 A match option that holds Hubble's roll to the wide one's plus the sky's 30.6 degrees would make
 this a single search instead of a scan.
+
+## Do the young stars gather into a network? (#529, the measure)
+
+Hubble's `heic0615a` shows the red star forming regions in trails and dense knots, not sprinkled
+evenly. `tools/network.py` puts a figure on it, at Hubble's framing (20.9 kpc across, 128 bins of
+163 pc): inside the galaxy's footprint, the share of the young knots (grains turned into stars
+during the run, younger than 5, 25 or 100 Myr) in the densest tenth of the bins, beside the same
+share of Hubble's pink pixels (red well above green, blue not below it). Evenly spread gives 0.10.
+A few knots look clustered by chance alone, so each figure stands beside the same count drawn at
+random from the knots younger than 100 Myr.
+
+| take | moment | knots < 5 Myr | chance | knots < 25 Myr | chance | gas | Hubble's red |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `scene-0099`, the archetype, 8 M, no sticky gas | 563 | 0.65 (3 858) | 0.59 | 0.36 | 0.41 | 0.20 | 1.00 |
+| first 8 M take (#526), sticky gas | 592 | 0.80 (3 665) | 0.52 | 0.39 | 0.38 | 0.33 | 1.00 |
+| B's 8 M take, sticky gas | 573 | 1.00 (1 414) | 0.83 | 0.51 | 0.42 | 0.33 | 1.00 |
+
+- Without sticky gas the knots spread as their parent population does, and the gas evenly.
+- With sticky gas the youngest knots gather beyond chance into arcs along the tidal arms and round
+  the two nuclei, and B's knots younger than 25 Myr still draw the rings and the southern arc
+  (stills `network-529.jpg` on `assets/antennae`). So the network is in the run; the renderer has
+  to show the youngest knots as red regions and let the older ones fade.
+- What differs from Hubble: the model's knots crowd the two nuclei, where Hubble's red avoids the
+  bright cores, and Hubble's knots come in compact clumps a few hundred parsecs across along the
+  northern arc, where the model's lie in thinner, smoother arcs.
+
+The pink mask is a judgement of colour; Hubble's figure moves with its thresholds, not its
+reading (every pink pixel lies in a tenth of the footprint at any sane threshold).
