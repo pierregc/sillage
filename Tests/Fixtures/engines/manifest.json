@@ -25,6 +25,10 @@
       {
         "file" : "frames/glow.rgba",
         "look" : "frames/glow.look.json"
+      },
+      {
+        "file" : "frames/nebulae.rgba",
+        "look" : "frames/nebulae.look.json"
       }
     ],
     "inside" : {

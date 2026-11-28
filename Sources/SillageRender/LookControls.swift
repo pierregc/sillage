@@ -72,6 +72,11 @@ extension LookFile.Group {
                     "Dust glow", \.dustGlow, 0...8,
                     note: "The dust shining as in a mid-infrared picture, on top of what it hides."),
                 .slider(
+                    "HII regions", \.nebulae, 0...60, format: "%.0f",
+                    note: "A cloud of red gas round each young knot, drawn behind the dust in front of it."),
+                .slider("HII region radius (kpc)", \.nebulaSize, 0.05...1),
+                .slider("HII region life (Myr)", \.nebulaMyr, 1...30, format: "%.0f"),
+                .slider(
                     "Dust reddening", \.dustReddening, 0...5,
                     note:
                         "How much more the dust takes from blue and green than from red: 1 as before, above browner lanes."
@@ -124,7 +129,10 @@ extension RenderLook {
     public func resetting(_ group: LookFile.Group, to baseline: RenderLook) -> RenderLook {
         var look = self
         for control in group.controls { control.reset(&look, to: baseline) }
-        if group == .light { look.dustGlowColour = baseline.dustGlowColour }
+        if group == .light {
+            look.dustGlowColour = baseline.dustGlowColour
+            look.nebulaColour = baseline.nebulaColour
+        }
         if group == .instrument {
             look.skyColour = baseline.skyColour
             look.holeShadow = baseline.holeShadow

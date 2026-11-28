@@ -51,7 +51,11 @@ typedef enum sc_render_pass {
      * web of SC_RENDER_WEB_RESOLVE, a pixel each. */
     SC_RENDER_DUST_GLOW = 9,
     SC_RENDER_PAINTED_GLOW = 10,
-    SC_RENDER_WEB_GLOW = 11
+    SC_RENDER_WEB_GLOW = 11,
+    /* The young knots' HII regions (#529), after SC_RENDER_STARS and with its uniforms, into the
+     * light through the finished dust, with sc_render_set_nebulae's values: massive particles
+     * alone, six puffs a particle. */
+    SC_RENDER_NEBULAE = 12
 } sc_render_pass;
 
 typedef enum sc_render_target {
@@ -114,6 +118,9 @@ sc_status sc_render_set_starfield(sc_renderer *renderer, const void *stars, uint
 sc_status sc_render_set_galaxies(sc_renderer *renderer, const void *galaxies, uint32_t count);
 /* The dust's glow: a linear colour then how bright, four floats. */
 sc_status sc_render_set_glow(sc_renderer *renderer, const float *glow);
+/* The HII regions, eight floats: how bright, their radius in kpc, the megayears they fade over, 0, then
+ * their linear colour and 0. */
+sc_status sc_render_set_nebulae(sc_renderer *renderer, const float *nebula);
 /* Bakes the lace and its levels, once, and gives its mean. */
 sc_status sc_render_bake_lace(sc_renderer *renderer, float *mean);
 /* Splats whose square covers more than `threshold` pixels are set aside and drawn a block

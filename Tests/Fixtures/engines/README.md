@@ -1,14 +1,14 @@
 # The engines' reference outputs (#281)
 
 Small outputs the Metal engine gives and the CUDA engine has to give too: a tree, the
-accelerations of one walk, five frames. Under 2.5 MB in all.
+accelerations of one walk, six frames. Under 2.5 MB in all.
 
 Everything is little endian, byte for byte as Metal holds it: a `float3` takes 16 bytes, its
 fourth float 0. `manifest.json` (`sillage-engine-fixtures`, version 1) lists the tree's files
 with their type, stride and count, as a walk dump's manifest does; a C++ reader needs nothing
 else.
 
-`./scripts/dev.sh fixtures` writes them again on the Mac, from `scene/` and the five look files
+`./scripts/dev.sh fixtures` writes them again on the Mac, from `scene/` and the six look files
 of `frames/`. The same code gives the same bytes: nothing in them depends on the run, the date or
 the commit. Since 2026-11-26 they are written on an Apple M6 under macOS 27: the M4 Max under
 macOS 26 gave other bits for the inside frames and the black hole's. On every
@@ -70,7 +70,7 @@ in 1,314 nodes, 63 steps in, with both disks cooling. The halos are live and the
 black hole, so `haloCount` and `holeCount` are 0: the walk reads neither `halos.bin` nor
 `holes.bin`.
 
-## `frames/`: five frames of 256 x 144
+## `frames/`: six frames of 256 x 144
 
 `take.sillage` is the take of that same run, one captured frame of its 3,013 drawn particles.
 Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 256 x 144 pixels,
@@ -83,6 +83,10 @@ Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 2
 | `webb` | the telescope world: Webb's spikes and its sky |
 | `widths` | `red-vs-cyan` with a kernel width for each population (#339) |
 | `glow` | the dust web glowing in coral and 3,000 background galaxies, no noise (#456) |
+| `nebulae` | `webb` with an HII region round each knot, lasting long enough that every knot has one (#529) |
+
+`nebulae.rgba` was written on the M4 Max under macOS 26, which gives the other five frames to the
+bit; its inside frames it does not.
 
 `inside.flight.json` is a flight from the look's camera into that take's disk (#347), written
 by hand. `inside-2.00s.rgba` and `inside-3.50s.rgba` (#369) are two moments of it in `webb`,

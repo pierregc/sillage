@@ -361,6 +361,12 @@ at the top of a look file lays that many galaxies behind the field stars, small,
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
 Both engines draw them, CUDA since #456.
 
+`look.nebulae` draws each young knot's HII region as a cloud of red gas around it, in the light and
+behind the dust in front, a few tens for a cloud as bright as Hubble's; 0, the default, draws none.
+`nebulaSize` is its radius once grown in kpc (0.15), `nebulaMyr` the megayears its light fades over
+(5), `nebulaColour` its colour in linear sRGB. Both engines draw it
+([star forming regions as nebulae](notes/star-forming-nebulae.md)).
+
 `look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
 default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's
 in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red scaled. The

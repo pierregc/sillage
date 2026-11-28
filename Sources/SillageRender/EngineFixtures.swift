@@ -21,7 +21,7 @@ public enum EngineFixtures {
 
     public static let width = 256
     public static let height = 144
-    public static let looks = ["red-vs-cyan", "ember", "webb", "widths", "glow"]
+    public static let looks = ["red-vs-cyan", "ember", "webb", "widths", "glow", "nebulae"]
     /// The captured frame of the take the four frames draw, and the one the walk is dumped at.
     public static let capturedFrame = 0
     /// The small hires run the walk dump and the take come from: 1,000 light tracers. No

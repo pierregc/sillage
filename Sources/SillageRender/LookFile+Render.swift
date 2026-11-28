@@ -45,6 +45,10 @@ extension LookFile {
         settings.galaxyCount = max(galaxyCount ?? 0, 0)
         settings.dustGlow = look.dustGlow
         settings.dustGlowColour = look.dustGlowColour
+        settings.nebulae = look.nebulae
+        settings.nebulaSize = look.nebulaSize
+        settings.nebulaMyr = look.nebulaMyr
+        settings.nebulaColour = look.nebulaColour
         settings.dustReddening = look.dustReddening
         settings.oldWidth = look.oldWidth
         settings.bulgeWidth = look.bulgeWidth

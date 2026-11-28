@@ -69,6 +69,11 @@ public struct RenderSettings: Sendable {
     /// How brightly the dust glows, and in what colour.
     public var dustGlow: Float = 0
     public var dustGlowColour = SIMD3<Float>(1, 0.26, 0.24)
+    /// The young knots' HII regions: how bright, how wide in kpc and how long they last.
+    public var nebulae: Float = 0
+    public var nebulaSize: Float = 0.15
+    public var nebulaMyr: Float = 5
+    public var nebulaColour = SIMD3<Float>(1, 0.34, 0.30)
     /// How much more the dust takes from blue and green than from red.
     public var dustReddening: Float = 1
     /// Each population's kernel against the tree's: the old disk, the bulge, the young stars
@@ -172,6 +177,10 @@ public struct RenderSettings: Sendable {
         dustWeb = look.dustWeb
         dustGlow = look.dustGlow
         dustGlowColour = look.dustGlowColour
+        nebulae = look.nebulae
+        nebulaSize = look.nebulaSize
+        nebulaMyr = look.nebulaMyr
+        nebulaColour = look.nebulaColour
         dustReddening = look.dustReddening
         oldWidth = look.oldWidth
         bulgeWidth = look.bulgeWidth

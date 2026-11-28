@@ -346,6 +346,16 @@ __global__ void splatVertex(Massive m, Frame f, Range range, uint lay, Targets t
     drawSplat(splat, lay, targets, large);
 }
 
+// The young knots' HII regions (#529): a thread a puff, six to a particle, laid as light.
+__global__ void nebulaVertex(Massive m, Frame f, Range range, float4 nebula, float4 colour, Targets targets,
+                             Large large) {
+    uint index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= range.count * 6u) { return; }
+    Splat splat = nebulaSplat(range.first * 6u + index, m.positions, m.formation, m.luminosity, m.component, f.u,
+                              f.stellar, nebula, colour);
+    drawSplat(splat, layLight, targets, large);
+}
+
 __global__ void splatTracerVertex(Tracers t, Frame f, Range range, uint lay, Targets targets, Large large) {
     uint vid;
     if (!particle(range, vid)) { return; }
@@ -663,6 +673,7 @@ struct sc_renderer {
     uint32_t starCount;
     uint32_t galaxyCount;
     float glow[4];
+    float nebula[8];
     uint32_t frameCount;
     uint32_t rampCount;
     sc_buffer *lightFixed;
@@ -828,7 +839,7 @@ static sc_status draw(sc_renderer *renderer, Vertices vertices, Blocks blocks) {
 static bool glows(sc_render_pass pass) { return pass == SC_RENDER_DUST_GLOW || pass == SC_RENDER_PAINTED_GLOW; }
 
 static uint32_t layOf(sc_render_pass pass) {
-    if (pass == SC_RENDER_STARS) { return sh::layLight; }
+    if (pass == SC_RENDER_STARS || pass == SC_RENDER_NEBULAE) { return sh::layLight; }
     if (pass == SC_RENDER_STARFIELD) { return sh::layStarfield; }
     return glows(pass) ? sh::layGlow : sh::layDust;
 }
@@ -856,7 +867,7 @@ static sc_status drawSplats(sc_renderer *renderer, const sh::Frame &frame, sc_re
     uint32_t lay = layOf(pass);
     bool painted = pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_PAINTED_GLOW;
     // Metal draws no light tracer's glow.
-    if (glows(pass)) { traced.count = 0u; }
+    if (glows(pass) || pass == SC_RENDER_NEBULAE) { traced.count = 0u; }
     if (pass == SC_RENDER_STARFIELD) {
         if (sc_status status = drawGalaxies(renderer, frame)) { return status; }
         if (renderer->starCount == 0u) { return SC_OK; }
@@ -866,6 +877,15 @@ static sc_status drawSplats(sc_renderer *renderer, const sh::Frame &frame, sc_re
             LAUNCH(starfieldVertex, groups(renderer->starCount), width,
                    pointer<const sh::BackgroundStar>(renderer->stars), frame, sh::Range{0u, renderer->starCount},
                    onto, large);
+            return SC_OK;
+        }
+        if (pass == SC_RENDER_NEBULAE) {
+            const float *nebula = renderer->nebula;
+            if (some.count > 0u) {
+                LAUNCH(nebulaVertex, groups(some.count * 6u), width, massive(renderer), frame, some,
+                       metal::float4(nebula[0], nebula[1], nebula[2], nebula[3]),
+                       metal::float4(nebula[4], nebula[5], nebula[6], nebula[7]), onto, large);
+            }
             return SC_OK;
         }
         if (some.count > 0u) {
@@ -988,7 +1008,8 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
         case SC_RENDER_PAINTED_DUST:
         case SC_RENDER_STARS:
         case SC_RENDER_DUST_GLOW:
-        case SC_RENDER_PAINTED_GLOW: return drawSplats(renderer, frame, pass, some, traced);
+        case SC_RENDER_PAINTED_GLOW:
+        case SC_RENDER_NEBULAE: return drawSplats(renderer, frame, pass, some, traced);
         case SC_RENDER_POINT_STARS: return drawStars(renderer, frame);
         case SC_RENDER_WEB_RESOLVE:
         case SC_RENDER_WEB_GLOW: {
@@ -1035,7 +1056,7 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
 // What a finish divides the light, the dust and the carrier by: nothing when they hold halves.
 static float unit(const sc_renderer *renderer) { return renderer->halves ? 0.0f : sh::fixedUnit; }
 
-static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_WEB_GLOW; }
+static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_NEBULAE; }
 
 static bool needsWeb(sc_render_pass pass) {
     return pass == SC_RENDER_WEB_CARRIER || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE
@@ -1044,7 +1065,7 @@ static bool needsWeb(sc_render_pass pass) {
 
 static bool drawsDust(sc_render_pass pass) {
     return pass == SC_RENDER_DUST || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE
-        || pass == SC_RENDER_STARS || pass == SC_RENDER_POINT_STARS;
+        || pass == SC_RENDER_STARS || pass == SC_RENDER_POINT_STARS || pass == SC_RENDER_NEBULAE;
 }
 
 }  // namespace render
@@ -1188,6 +1209,12 @@ sc_status sc_render_set_glow(sc_renderer *renderer, const float *glow) {
     return SC_OK;
 }
 
+sc_status sc_render_set_nebulae(sc_renderer *renderer, const float *nebula) {
+    if (!renderer || !nebula) { return fail(SC_INVALID_ARGUMENT, "no renderer or no nebulae"); }
+    for (int channel = 0; channel < 8; ++channel) { renderer->nebula[channel] = nebula[channel]; }
+    return SC_OK;
+}
+
 sc_status sc_render_bake_lace(sc_renderer *renderer, float *mean) {
     if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
     if (!webbed(renderer)) { return fail(SC_INVALID_ARGUMENT, "this renderer was made without the dust web"); }
@@ -1328,7 +1355,8 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
         case SC_RENDER_POINT_STARS:
         case SC_RENDER_DUST_GLOW:
         case SC_RENDER_PAINTED_GLOW:
-        case SC_RENDER_WEB_GLOW: break;
+        case SC_RENDER_WEB_GLOW:
+        case SC_RENDER_NEBULAE: break;
     }
     bool resolves = pass == SC_RENDER_WEB_RESOLVE || pass == SC_RENDER_WEB_GLOW;
     // A splat sizes its kernel from the column's cells, the resolve reads the carrier, and a
@@ -1348,7 +1376,7 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
     }
     // The glow writes the light alone.
     if (glows(pass) || pass == SC_RENDER_WEB_GLOW) { return SC_OK; }
-    if (pass != SC_RENDER_STARS && pass != SC_RENDER_POINT_STARS) {
+    if (pass != SC_RENDER_STARS && pass != SC_RENDER_POINT_STARS && pass != SC_RENDER_NEBULAE) {
         renderer->dustStale = true;
         return SC_OK;
     }

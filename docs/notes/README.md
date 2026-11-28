@@ -48,6 +48,7 @@ session. Read the note for an area before changing it.
 - [A breathing core, and a bulge with no edge](breathing-core.md)
 - [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge
 - [Why the red went out](red-population.md): and what a constant population costs
+- [Star forming regions as nebulae](star-forming-nebulae.md): #529, a cloud of red gas round each young knot, from far and from inside, on both engines
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
 - [Gas that dissipates](gas-that-dissipates.md): a study on paper of what it would take for the gas to lose energy, why the Mice's lanes go out by 620 Myr, what the drawing alone, sticky gas on the tree's cells, isothermal SPH and what lies beyond would each give and cost, and a spike with its criteria
 - [Sticky gas on the tree's cells: the spike](sticky-gas.md): the note's rule tried on the Mice, why it flattens a quiet disk, the collision along one line and the pressure floor that replace it, what the gas then does at the nuclei and in the tails, and the cost

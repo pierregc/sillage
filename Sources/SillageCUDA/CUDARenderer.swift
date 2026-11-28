@@ -382,6 +382,9 @@ public final class CUDARenderer: FrameStyling {
                 let skyLast = sky != nil && beforeSky != nil && deep != nil
                 if let sky, !skyLast { try drawSky(sky) }
                 try draw(SC_RENDER_STARS, pass, plan, parts, threads, deep)
+                if settings.nebulae > 0 && !settings.plain {
+                    try draw(SC_RENDER_NEBULAE, pass, plan, (parts.massive, 0..<0), threads, deep)
+                }
                 if let deep {
                     if let beforeStars { try beforeStars() }
                     // The near particles' point stars go with the stars, as Metal draws them.
@@ -704,6 +707,11 @@ public final class CUDARenderer: FrameStyling {
             settings.dustGlow,
         ]
         try check(sc_render_set_glow(handle, glow), "the dust's glow")
+        let nebula = [
+            settings.nebulae, settings.nebulaSize, settings.nebulaMyr, 0,
+            settings.nebulaColour.x, settings.nebulaColour.y, settings.nebulaColour.z, 0,
+        ]
+        try check(sc_render_set_nebulae(handle, nebula), "the HII regions")
         try check(sc_render_set_whole_squares(handle, wholeSquares ? 1 : 0), "the point stars' walk")
     }
 
@@ -727,6 +735,7 @@ public final class CUDARenderer: FrameStyling {
     private static func phase(_ name: sc_render_pass, _ pass: FramePlan.Pass) -> String {
         switch name {
         case SC_RENDER_POINT_STARS: "pass pointStars"
+        case SC_RENDER_NEBULAE: "pass nebulae"
         case SC_RENDER_DUST_GLOW, SC_RENDER_PAINTED_GLOW, SC_RENDER_WEB_GLOW: "pass \(pass) glow"
         default: "pass \(pass)"
         }
