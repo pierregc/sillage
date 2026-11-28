@@ -4,7 +4,6 @@ BarnesHutTests+Mac.swift      # Metal
 CheckpointTests+Mac.swift     # AVFoundation, Metal
 DiskProbeTests+Mac.swift      # DiskProbe.run, in DiskProbeRun, which draws on Metal
 DustGlowTests.swift           # Metal
-NebulaTests.swift             # Metal
 EngineFixtureTests.swift      # Metal
 ExportTests+Mac.swift         # TakeExport, which needs a Metal device, and AVFoundation
 FullPassTrackTests.swift      # Metal
@@ -14,6 +13,7 @@ InsideRenderTests.swift       # Metal
 KeyFrameVisitTests.swift      # Metal
 LightTracerTests+Mac.swift    # Metal
 MetalSolverTests.swift        # Metal
+NebulaTests.swift             # Metal
 NightPageTests+Mac.swift      # ProcessProbe, which only knows macOS
 NightRunnerTests.swift        # starts processes through Spawn, which only knows macOS
 NoticesTests+Mac.swift        # the queue runner starts its stages through Spawn, which only knows macOS
